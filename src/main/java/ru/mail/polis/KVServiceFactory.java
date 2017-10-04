@@ -1,6 +1,8 @@
 package ru.mail.polis;
 
 import org.jetbrains.annotations.NotNull;
+import ru.mail.polis.lamtev.FileKVDAO;
+import ru.mail.polis.lamtev.SimpleKVService;
 
 import java.io.File;
 import java.io.IOException;
@@ -44,7 +46,6 @@ final class KVServiceFactory {
             throw new IllegalArgumentException("Path is not a directory: " + data);
         }
 
-        // TODO: Implement me
-        throw new UnsupportedOperationException("Implement me!");
+        return new SimpleKVService(port, new FileKVDAO(data.getPath()));
     }
 }
