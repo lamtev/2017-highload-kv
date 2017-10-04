@@ -8,7 +8,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.NoSuchElementException;
 
-public class NioFileDAO implements KVDAO {
+public final class NioFileDAO implements KVDAO {
 
     @NotNull
     private final String dir;
@@ -42,7 +42,7 @@ public class NioFileDAO implements KVDAO {
     @Override
     public void delete(@NotNull String id) throws IllegalArgumentException, IOException {
         checkId(id);
-        Files.delete(Paths.get(dir, id));
+        Files.deleteIfExists(Paths.get(dir, id));
     }
 
     private void checkId(@NotNull String id) {

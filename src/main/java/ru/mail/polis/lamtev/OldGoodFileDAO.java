@@ -5,7 +5,7 @@ import org.jetbrains.annotations.NotNull;
 import java.io.*;
 import java.util.NoSuchElementException;
 
-public class OldGoodFileDAO implements KVDAO {
+public final class OldGoodFileDAO implements KVDAO {
 
     @NotNull
     private final String dir;
@@ -17,6 +17,7 @@ public class OldGoodFileDAO implements KVDAO {
     @NotNull
     @Override
     public byte[] get(@NotNull String id) throws NoSuchElementException, IllegalArgumentException, IOException {
+        checkId(id);
         final File file = getFile(id);
         if (!file.exists()) {
             throw new NoSuchElementException("Can't find file with id=" + id);
@@ -32,6 +33,7 @@ public class OldGoodFileDAO implements KVDAO {
 
     @Override
     public void upsert(@NotNull String id, @NotNull byte[] value) throws IllegalArgumentException, IOException {
+        checkId(id);
         try (OutputStream out = new FileOutputStream(getFile(id))) {
             out.write(value);
         }
@@ -39,6 +41,7 @@ public class OldGoodFileDAO implements KVDAO {
 
     @Override
     public void delete(@NotNull String id) throws IllegalArgumentException, IOException {
+        checkId(id);
         getFile(id).delete();
     }
 
@@ -46,4 +49,11 @@ public class OldGoodFileDAO implements KVDAO {
     private File getFile(@NotNull String id) {
         return new File(dir, id);
     }
+
+    private void checkId(@NotNull String id) {
+        if (id.isEmpty()) {
+            throw new IllegalArgumentException("Id is empty");
+        }
+    }
+
 }

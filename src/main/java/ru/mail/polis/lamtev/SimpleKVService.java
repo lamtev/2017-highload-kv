@@ -9,12 +9,14 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.NoSuchElementException;
 
-public class SimpleKVService implements KVService {
+public final class SimpleKVService implements KVService {
 
     private static final String STATUS_PATH = "/v0/status";
     private static final String ENTITY_PATH = "/v0/entity";
     private static final String QUERY_PREFIX = "id=";
     private static final byte[] STATUS_RESPONSE = "ONLINE".getBytes();
+    private static final String SHITTY_QUERY = "Shitty query";
+
     @NotNull
     private final HttpServer server;
     @NotNull
@@ -24,20 +26,12 @@ public class SimpleKVService implements KVService {
         this.server = HttpServer.create(new InetSocketAddress(port), 0);
         this.dao = dao;
 
-        this.server.createContext(STATUS_PATH, http -> {
-                    http.sendResponseHeaders(200, STATUS_RESPONSE.length);
-                    http.getResponseBody().write(STATUS_RESPONSE);
-                    http.close();
-                }
-        );
+        this.server.createContext(STATUS_PATH, this::processStatusRequest);
         this.server.createContext(ENTITY_PATH, this::processEntityRequest);
     }
 
     @NotNull
     private static String extractId(@NotNull final String query) {
-        if (!query.startsWith(QUERY_PREFIX)) {
-            throw new IllegalArgumentException("Shitty query");
-        }
         return query.substring(QUERY_PREFIX.length());
     }
 
@@ -51,8 +45,21 @@ public class SimpleKVService implements KVService {
         server.stop(0);
     }
 
-    private void processEntityRequest(HttpExchange http) throws IOException {
-        final String id = extractId(http.getRequestURI().getQuery());
+    private void processStatusRequest(@NotNull HttpExchange http) throws IOException {
+        http.sendResponseHeaders(200, STATUS_RESPONSE.length);
+        http.getResponseBody().write(STATUS_RESPONSE);
+        http.close();
+    }
+
+    private void processEntityRequest(@NotNull HttpExchange http) throws IOException {
+        final String query = http.getRequestURI().getQuery();
+        if (!query.startsWith(QUERY_PREFIX)) {
+            sendResponse(http, SHITTY_QUERY, 400);
+            http.close();
+            return;
+        }
+        final String id = extractId(query);
+
         switch (http.getRequestMethod()) {
             case "GET":
                 processGetRequest(http, id);
@@ -69,52 +76,52 @@ public class SimpleKVService implements KVService {
         http.close();
     }
 
-    private void processDeleteRequest(HttpExchange http, String id) throws IOException {
+    private void processGetRequest(@NotNull HttpExchange http, @NotNull String id) throws IOException {
+        final byte[] value;
         try {
-            dao.delete(id);
+            value = dao.get(id);
+        } catch (NoSuchElementException e) {
+            sendResponse(http, e.getMessage(), 404);
+            return;
         } catch (IllegalArgumentException e) {
-            illegalId(http, e);
+            sendResponse(http, e.getMessage(), 400);
             return;
         }
-        http.sendResponseHeaders(202, 0);
+        sendResponse(http, value, 200);
     }
 
-    private void processPutRequest(HttpExchange http, String id) throws IOException {
-        final int contentLength = Integer.valueOf(
-                http.getRequestHeaders().getFirst("Content-Length"));
+    private void processPutRequest(@NotNull HttpExchange http, @NotNull String id) throws IOException {
+        final int contentLength = Integer.valueOf(http.getRequestHeaders().getFirst("Content-Length"));
         final byte[] value = new byte[contentLength];
-        int readBytes = http.getRequestBody().read(value);
-        if (readBytes != contentLength) {
+        if (http.getRequestBody().read(value) != value.length) {
             throw new IOException("Can't read at once");
         }
         try {
             dao.upsert(id, value);
         } catch (IllegalArgumentException e) {
-            illegalId(http, e);
+            sendResponse(http, e.getMessage(), 400);
             return;
         }
         http.sendResponseHeaders(201, 0);
     }
 
-    private void processGetRequest(HttpExchange http, String id) throws IOException {
-        final byte[] value;
+    private void processDeleteRequest(@NotNull HttpExchange http, @NotNull String id) throws IOException {
         try {
-            value = dao.get(id);
-        } catch (NoSuchElementException e) {
-            http.sendResponseHeaders(404, 0);
-            return;
+            dao.delete(id);
         } catch (IllegalArgumentException e) {
-            illegalId(http, e);
+            sendResponse(http, e.getMessage(), 400);
             return;
         }
-        http.sendResponseHeaders(200, value.length);
-        http.getResponseBody().write(value);
+        http.sendResponseHeaders(202, 0);
     }
 
-    private void illegalId(HttpExchange http, IllegalArgumentException e) throws IOException {
-        final byte[] message = e.getMessage().getBytes();
-        http.sendResponseHeaders(400, message.length);
+    private void sendResponse(@NotNull HttpExchange http, @NotNull byte[] message, int code) throws IOException {
+        http.sendResponseHeaders(code, message.length);
         http.getResponseBody().write(message);
+    }
+
+    private void sendResponse(@NotNull HttpExchange http, @NotNull String message, int code) throws IOException {
+        sendResponse(http, message.getBytes(), code);
     }
 
 }
