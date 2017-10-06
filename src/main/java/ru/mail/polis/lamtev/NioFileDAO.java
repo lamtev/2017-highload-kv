@@ -4,7 +4,6 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.NoSuchElementException;
 
@@ -30,13 +29,7 @@ public final class NioFileDAO implements KVDAO {
     @Override
     public void upsert(@NotNull String id, @NotNull byte[] value) throws IllegalArgumentException, IOException {
         checkId(id);
-        Path filePath = Paths.get(dir, id);
-//        if (value.length == 0) {
-//            Files.createFile(filePath);
-//            return;
-//        }
-        Files.write(filePath, value);
-
+        Files.write(Paths.get(dir, id), value);
     }
 
     @Override
