@@ -1,8 +1,8 @@
 package ru.mail.polis;
 
 import org.jetbrains.annotations.NotNull;
-import ru.mail.polis.lamtev.NioFileDAO;
-import ru.mail.polis.lamtev.SimpleKVService;
+import ru.mail.polis.lamtev.FileKVDAO;
+import ru.mail.polis.lamtev.ClusteredKVService;
 
 import java.io.File;
 import java.io.IOException;
@@ -49,6 +49,6 @@ final class KVServiceFactory {
             throw new IllegalArgumentException("Path is not a directory: " + data);
         }
 
-        return new SimpleKVService(port, new NioFileDAO(data.getPath()));
+        return new ClusteredKVService(port, new FileKVDAO(data.getPath()), topology);
     }
 }
