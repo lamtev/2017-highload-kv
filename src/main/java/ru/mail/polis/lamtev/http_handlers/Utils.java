@@ -3,7 +3,9 @@ package ru.mail.polis.lamtev.http_handlers;
 import com.sun.net.httpserver.HttpExchange;
 import org.jetbrains.annotations.NotNull;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 
 @SuppressWarnings("WeakerAccess")
 public final class Utils {
@@ -14,7 +16,6 @@ public final class Utils {
     public static final String QUERY_PREFIX = "id=";
     public static final String STATUS_RESPONSE = "ONLINE";
     public static final String SHITTY_QUERY = "Shitty query";
-    public static final String CANT_READ_AT_ONCE = "Can't read at once";
     public static final String VALUE_BY_ID = "Value by id=";
     public static final String MIGHT_HAVE_BEEN_DELETED = "might have been deleted";
     public static final String HAVE_BEEN_UPDATED = "have been updated";
@@ -22,7 +23,6 @@ public final class Utils {
     public static final String GET = "GET";
     public static final String PUT = "PUT";
     public static final String DELETE = "DELETE";
-    public static final String CONTENT_LENGTH = "Content-Length";
 
     public static void sendResponse(@NotNull HttpExchange http, @NotNull byte[] message, int code) throws IOException {
         http.sendResponseHeaders(code, message.length);
@@ -34,6 +34,17 @@ public final class Utils {
         sendResponse(http, message.getBytes(), code);
     }
 
+    public static byte[] readData(@NotNull InputStream is) throws IOException {
+        try (ByteArrayOutputStream os = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[1024];
+            for (int len; (len = is.read(buffer, 0, 1024)) != -1; ) {
+                os.write(buffer, 0, len);
+            }
+            os.flush();
+            return os.toByteArray();
+        }
+    }
+
     static final class QueryParser {
 
         private static final String ID_PREFIX = "id=";
@@ -43,12 +54,14 @@ public final class Utils {
         private final int ack;
         private final int from;
 
-        QueryParser(String query) {
+        QueryParser(@NotNull String query) {
             if (query.contains(REPLICAS_PREFIX)) {
                 id = query.substring(ID_PREFIX.length(), query.indexOf(REPLICAS_PREFIX));
                 final String[] replicas = query.substring(query.indexOf(REPLICAS_PREFIX) + REPLICAS_PREFIX.length()).split("/");
-                ack = Integer.valueOf(replicas[0]);
-                from = Integer.valueOf(replicas[1]);
+                final int mbAck = Integer.valueOf(replicas[0]);
+                ack = mbAck > 0 ? mbAck : -1;
+                final int mbFrom = Integer.valueOf(replicas[1]);
+                from = mbFrom > 0 ? mbFrom : -1;
             } else {
                 id = query.substring(ID_PREFIX.length());
                 ack = from = 0;
@@ -66,6 +79,15 @@ public final class Utils {
 
         public int from() {
             return from;
+        }
+
+        @Override
+        public String toString() {
+            return "QueryParser{" +
+                    "id='" + id + '\'' +
+                    ", ack=" + ack +
+                    ", from=" + from +
+                    '}';
         }
     }
 

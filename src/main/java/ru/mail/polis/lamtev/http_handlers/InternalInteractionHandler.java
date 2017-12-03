@@ -15,6 +15,8 @@ public class InternalInteractionHandler implements HttpHandler {
 
     @NotNull
     private final KVDAO dao;
+    @NotNull
+    private HttpExchange http;
 
     public InternalInteractionHandler(@NotNull KVDAO dao) {
         this.dao = dao;
@@ -22,31 +24,33 @@ public class InternalInteractionHandler implements HttpHandler {
 
     @Override
     public void handle(HttpExchange http) throws IOException {
+        this.http = http;
         final String query = http.getRequestURI().getQuery();
         if (!query.startsWith(QUERY_PREFIX)) {
             sendResponse(http, SHITTY_QUERY, 400);
             return;
         }
+
         final QueryParser parser = new QueryParser(query);
         final String id = parser.id();
 
         final String method = http.getRequestMethod();
         switch (method) {
             case GET:
-                handleGetRequest(http, id);
+                handleGetRequest(id);
                 break;
             case PUT:
-                handlePutRequest(http, id);
+                handlePutRequest(id);
                 break;
             case DELETE:
-                handleDeleteRequest(http, id);
+                handleDeleteRequest(id);
                 break;
             default:
                 sendResponse(http, method + NOT_ALLOWED, 405);
         }
     }
 
-    private void handleGetRequest(@NotNull HttpExchange http, @NotNull String id) throws IOException {
+    private void handleGetRequest(@NotNull String id) throws IOException {
         final byte[] value;
         try {
             value = dao.get(id);
@@ -60,12 +64,8 @@ public class InternalInteractionHandler implements HttpHandler {
         sendResponse(http, value, 200);
     }
 
-    private void handlePutRequest(@NotNull HttpExchange http, @NotNull String id) throws IOException {
-        final int contentLength = Integer.valueOf(http.getRequestHeaders().getFirst(CONTENT_LENGTH));
-        final byte[] value = new byte[contentLength];
-        if (contentLength != 0 && http.getRequestBody().read(value) != value.length) {
-            throw new IOException(CANT_READ_AT_ONCE);
-        }
+    private void handlePutRequest(@NotNull String id) throws IOException {
+        final byte[] value = readData(http.getRequestBody());
         try {
             dao.upsert(id, value);
         } catch (IllegalArgumentException e) {
@@ -75,7 +75,7 @@ public class InternalInteractionHandler implements HttpHandler {
         sendResponse(http, VALUE_BY_ID + id + HAVE_BEEN_UPDATED, 201);
     }
 
-    private void handleDeleteRequest(@NotNull HttpExchange http, @NotNull String id) throws IOException {
+    private void handleDeleteRequest(@NotNull String id) throws IOException {
         try {
             dao.delete(id);
         } catch (IllegalArgumentException e) {

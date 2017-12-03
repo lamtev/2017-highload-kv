@@ -20,7 +20,7 @@ final class ClusterImpl implements Cluster {
         final List<String> nodes = new ArrayList<>(from);
         for (int i = 0; i < from; ++i) {
             final int hash = id.hashCode() + i;
-            nodes.add(topology.get(hash % topology.size()));
+            nodes.add(topology.get(Math.abs(hash % topology.size())));
         }
         return nodes;
     }

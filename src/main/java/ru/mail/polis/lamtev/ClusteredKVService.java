@@ -9,6 +9,8 @@ import ru.mail.polis.lamtev.http_handlers.InternalInteractionHandler;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import static ru.mail.polis.lamtev.http_handlers.Utils.*;
 
@@ -16,16 +18,36 @@ public final class ClusteredKVService implements KVService {
 
     @NotNull
     private final HttpServer server;
+    @NotNull
+    private final ExecutorService executor;
 
     public ClusteredKVService(int port,
                               @NotNull final KVDAO dao,
                               @NotNull final Set<String> topology) throws IOException {
-        final Cluster cluster = Cluster.of(topology);
         server = HttpServer.create(new InetSocketAddress(port), 0);
+        executor = Executors.newFixedThreadPool(3 + 1);
 
-        server.createContext(STATUS_PATH, http -> sendResponse(http, STATUS_RESPONSE, 200));
-        server.createContext(ENTITY_PATH, new EntityHandler(cluster, dao));
-        server.createContext(INTERNAL_INTERACTION_PATH, new InternalInteractionHandler(dao));
+        server.createContext(STATUS_PATH, http -> executor.execute(() -> {
+            try {
+                sendResponse(http, STATUS_RESPONSE, 200);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }));
+        server.createContext(ENTITY_PATH, http -> executor.execute(() -> {
+            try {
+                new EntityHandler(Cluster.of(topology)).handle(http);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }));
+        server.createContext(INTERNAL_INTERACTION_PATH, http -> executor.execute(() -> {
+            try {
+                new InternalInteractionHandler(dao).handle(http);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }));
     }
 
     @Override
