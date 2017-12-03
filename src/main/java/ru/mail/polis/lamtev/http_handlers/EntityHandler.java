@@ -10,7 +10,6 @@ import ru.mail.polis.lamtev.Cluster;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.NoSuchElementException;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -29,12 +28,11 @@ public class EntityHandler implements HttpHandler {
 
     public EntityHandler(@NotNull Cluster cluster) {
         this.cluster = cluster;
-        this.putExecutor = Executors.newFixedThreadPool(cluster.numberOfNodes() + 1);
+        this.putExecutor = Executors.newFixedThreadPool(cluster.numberOfNodes());
     }
 
     @Override
     public void handle(@NotNull HttpExchange http) throws IOException {
-        System.out.println("handling started");
         this.http = http;
         final String query = http.getRequestURI().getQuery();
         if (!query.startsWith(QUERY_PREFIX)) {
@@ -76,25 +74,27 @@ public class EntityHandler implements HttpHandler {
     private void handleGetRequest(@NotNull String id, int ack, @NotNull List<String> nodes) throws IOException {
         List<Future<HttpResponse>> futures = new ArrayList<>();
 
-        nodes.parallelStream().forEach(it -> {
-            Future<HttpResponse> response = putExecutor.submit(
-                    () -> Request.Get(it + INTERNAL_INTERACTION_PATH + "?id=" + id).execute().returnResponse()
-            );
-            futures.add(response);
-        });
-
-        System.out.println("futures.size = " + futures.size());
+        nodes.parallelStream().forEach(it -> futures.add(
+                putExecutor.submit(() -> Request.Get(it + INTERNAL_INTERACTION_PATH + "?id=" + id)
+                        .execute()
+                        .returnResponse()
+                )
+        ));
 
         AtomicInteger nOk = new AtomicInteger(0);
         AtomicInteger nNotFound = new AtomicInteger(0);
         AtomicInteger nDeleted = new AtomicInteger(0);
         AtomicInteger nIllegal = new AtomicInteger(0);
+        List<byte[]> values = new ArrayList<>();
         for (Future<HttpResponse> future : futures) {
             try {
-                final int statusCode = future.get(500L, MILLISECONDS).getStatusLine().getStatusCode();
+                final HttpResponse response = future.get(300L, MILLISECONDS);
+                final int statusCode = response.getStatusLine().getStatusCode();
                 switch (statusCode) {
                     case 200:
                         nOk.incrementAndGet();
+                        values.add(readData(response.getEntity().getContent()));
+                        System.out.println(values.get(values.size() - 1).length);
                         break;
                     case 404:
                         nNotFound.incrementAndGet();
@@ -106,8 +106,7 @@ public class EntityHandler implements HttpHandler {
             } catch (InterruptedException | ExecutionException e) {
                 e.printStackTrace();
             } catch (TimeoutException e) {
-                e.printStackTrace();
-                System.out.println(e.getMessage());
+                future.cancel(true);
             }
         }
 
@@ -116,41 +115,29 @@ public class EntityHandler implements HttpHandler {
         } else if (nDeleted.get() > 0 || nNotFound.get() >= ack) {
             sendResponse(http, "Not found", 404);
         } else {
-            Future<HttpResponse> future = futures.stream()
-                    .filter(Future::isDone)
-                    .findFirst()
-                    .orElseThrow(NoSuchElementException::new);
-            try {
-                sendResponse(http, readData(future.get().getEntity().getContent()), 200);
-            } catch (InterruptedException | ExecutionException e) {
-                e.printStackTrace();
-            }
+            sendResponse(http, consistentValue(values, ack), 200);
         }
     }
 
     private void handlePutRequest(@NotNull String id, int ack, @NotNull List<String> nodes) throws IOException {
-        System.out.println("Put handling...");
         List<Future<HttpResponse>> futures = new ArrayList<>();
 
-        nodes.parallelStream().forEach(it -> {
-            Future<HttpResponse> response = putExecutor.submit(() -> {
-                byte[] data = readData(http.getRequestBody());
-                return Request.Put(it + INTERNAL_INTERACTION_PATH + "?id=" + id)
-                        .bodyByteArray(data)
-                        .execute()
-                        .returnResponse();
-            });
-            futures.add(response);
-        });
-
-        System.out.println("futures.size = " + futures.size());
+        nodes.parallelStream().forEach(it -> futures.add(
+                putExecutor.submit(() -> {
+                    byte[] data = readData(http.getRequestBody());
+                    return Request.Put(it + INTERNAL_INTERACTION_PATH + "?id=" + id)
+                            .bodyByteArray(data)
+                            .execute()
+                            .returnResponse();
+                })
+        ));
 
         AtomicInteger nCreated = new AtomicInteger(0);
         AtomicInteger nIllegal = new AtomicInteger(0);
 
         for (Future<HttpResponse> future : futures) {
             try {
-                final int statusCode = future.get(500L, MILLISECONDS).getStatusLine().getStatusCode();
+                final int statusCode = future.get(300L, MILLISECONDS).getStatusLine().getStatusCode();
                 switch (statusCode) {
                     case 201:
                         nCreated.incrementAndGet();
@@ -159,9 +146,10 @@ public class EntityHandler implements HttpHandler {
                         nIllegal.incrementAndGet();
                         break;
                 }
-            } catch (InterruptedException | ExecutionException | TimeoutException e) {
+            } catch (InterruptedException | ExecutionException e) {
                 e.printStackTrace();
-                System.out.println(e.getMessage());
+            } catch (TimeoutException e) {
+                future.cancel(true);
             }
         }
 
@@ -188,7 +176,7 @@ public class EntityHandler implements HttpHandler {
 
         for (Future<HttpResponse> future : futures) {
             try {
-                final int statusCode = future.get(500L, MILLISECONDS).getStatusLine().getStatusCode();
+                final int statusCode = future.get(300L, MILLISECONDS).getStatusLine().getStatusCode();
                 switch (statusCode) {
                     case 202:
                         nAccepted.incrementAndGet();
@@ -197,8 +185,10 @@ public class EntityHandler implements HttpHandler {
                         nIllegal.incrementAndGet();
                         break;
                 }
-            } catch (InterruptedException | ExecutionException | TimeoutException e) {
+            } catch (InterruptedException | ExecutionException e) {
                 e.printStackTrace();
+            } catch (TimeoutException e) {
+                future.cancel(true);
             }
         }
 

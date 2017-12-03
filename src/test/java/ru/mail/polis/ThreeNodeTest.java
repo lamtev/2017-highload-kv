@@ -304,6 +304,7 @@ public class ThreeNodeTest extends ClusterTestBase {
         // Check node 0
         if (get(0, key, 1, 1).getStatusLine().getStatusCode() == 200) {
             copies++;
+            System.out.println("0 ++");
         }
 
         // Stop node 0
@@ -316,6 +317,7 @@ public class ThreeNodeTest extends ClusterTestBase {
         // Check node 1
         if (get(1, key, 1, 1).getStatusLine().getStatusCode() == 200) {
             copies++;
+            System.out.println("1 ++");
         }
 
         // Stop node 1
@@ -328,6 +330,7 @@ public class ThreeNodeTest extends ClusterTestBase {
         // Check node 2
         if (get(2, key, 1, 1).getStatusLine().getStatusCode() == 200) {
             copies++;
+            System.out.println("2 ++");
         }
 
         // Start node 0 & 1

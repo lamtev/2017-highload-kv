@@ -25,7 +25,7 @@ public final class ClusteredKVService implements KVService {
                               @NotNull final KVDAO dao,
                               @NotNull final Set<String> topology) throws IOException {
         server = HttpServer.create(new InetSocketAddress(port), 0);
-        executor = Executors.newFixedThreadPool(3 + 1);
+        executor = Executors.newFixedThreadPool(3);
 
         server.createContext(STATUS_PATH, http -> executor.execute(() -> {
             try {

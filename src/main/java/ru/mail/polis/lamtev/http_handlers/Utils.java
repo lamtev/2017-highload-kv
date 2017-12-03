@@ -6,6 +6,8 @@ import org.jetbrains.annotations.NotNull;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Arrays;
+import java.util.List;
 
 @SuppressWarnings("WeakerAccess")
 public final class Utils {
@@ -34,6 +36,7 @@ public final class Utils {
         sendResponse(http, message.getBytes(), code);
     }
 
+    @NotNull
     public static byte[] readData(@NotNull InputStream is) throws IOException {
         try (ByteArrayOutputStream os = new ByteArrayOutputStream()) {
             byte[] buffer = new byte[1024];
@@ -43,6 +46,19 @@ public final class Utils {
             os.flush();
             return os.toByteArray();
         }
+    }
+
+    @NotNull
+    public static byte[] consistentValue(@NotNull List<byte[]> values, int ack) {
+        for (byte[] value : values) {
+            int cnt = (int) values.stream()
+                    .filter(it -> Arrays.equals(it, value))
+                    .count();
+            if (cnt == ack) {
+                return value;
+            }
+        }
+        return values.get(0);
     }
 
     static final class QueryParser {
