@@ -42,6 +42,7 @@ public class EntityHandler implements HttpHandler {
         final QueryParser parser = new QueryParser(query);
         if (parser.id().isEmpty()) {
             sendResponse(http, "Illegal id", 400);
+            return;
         }
         if (parser.ack() == -1 || parser.from() == -1) {
             sendResponse(http, "To small RF", 400);
@@ -72,7 +73,7 @@ public class EntityHandler implements HttpHandler {
     }
 
     private void handleGetRequest(@NotNull String id, int ack, @NotNull List<String> nodes) throws IOException {
-        List<Future<HttpResponse>> futures = new ArrayList<>();
+        final List<Future<HttpResponse>> futures = new ArrayList<>();
 
         nodes.parallelStream().forEach(it -> futures.add(
                 putExecutor.submit(() -> Request.Get(it + INTERNAL_INTERACTION_PATH + "?id=" + id)
@@ -81,11 +82,12 @@ public class EntityHandler implements HttpHandler {
                 )
         ));
 
-        AtomicInteger nOk = new AtomicInteger(0);
-        AtomicInteger nNotFound = new AtomicInteger(0);
-        AtomicInteger nDeleted = new AtomicInteger(0);
-        AtomicInteger nIllegal = new AtomicInteger(0);
-        List<byte[]> values = new ArrayList<>();
+        final AtomicInteger nOk = new AtomicInteger(0);
+        final AtomicInteger nNotFound = new AtomicInteger(0);
+        final AtomicInteger nDeleted = new AtomicInteger(0);
+        final AtomicInteger nIllegal = new AtomicInteger(0);
+        final List<byte[]> values = new ArrayList<>();
+
         for (Future<HttpResponse> future : futures) {
             try {
                 final HttpResponse response = future.get(300L, MILLISECONDS);
@@ -94,14 +96,21 @@ public class EntityHandler implements HttpHandler {
                     case 200:
                         nOk.incrementAndGet();
                         values.add(readData(response.getEntity().getContent()));
-                        System.out.println(values.get(values.size() - 1).length);
                         break;
                     case 404:
-                        nNotFound.incrementAndGet();
+                        final byte[] msgBytes = readData(response.getEntity().getContent());
+                        final String msg = new String(msgBytes);
+                        if ("DELETED".equals(msg)) {
+                            nDeleted.incrementAndGet();
+                        } else {
+                            nNotFound.incrementAndGet();
+                        }
                         break;
                     case 400:
                         nIllegal.incrementAndGet();
                         break;
+                    default:
+
                 }
             } catch (InterruptedException | ExecutionException e) {
                 e.printStackTrace();
@@ -110,7 +119,7 @@ public class EntityHandler implements HttpHandler {
             }
         }
 
-        if (nOk.get() + nNotFound.get() < ack) {
+        if (nOk.get() + nNotFound.get() + nDeleted.get() < ack) {
             sendResponse(http, "Not enough replicas", 504);
         } else if (nDeleted.get() > 0 || nNotFound.get() >= ack) {
             sendResponse(http, "Not found", 404);
@@ -120,22 +129,20 @@ public class EntityHandler implements HttpHandler {
     }
 
     private void handlePutRequest(@NotNull String id, int ack, @NotNull List<String> nodes) throws IOException {
-        List<Future<HttpResponse>> futures = new ArrayList<>();
+        final List<Future<HttpResponse>> futures = new ArrayList<>();
 
+        final byte[] data = readData(http.getRequestBody());
         nodes.parallelStream().forEach(it -> futures.add(
-                putExecutor.submit(() -> {
-                    byte[] data = readData(http.getRequestBody());
-                    return Request.Put(it + INTERNAL_INTERACTION_PATH + "?id=" + id)
-                            .bodyByteArray(data)
-                            .execute()
-                            .returnResponse();
-                })
+                putExecutor.submit(() -> Request.Put(it + INTERNAL_INTERACTION_PATH + "?id=" + id)
+                        .bodyByteArray(data)
+                        .execute()
+                        .returnResponse())
         ));
 
-        AtomicInteger nCreated = new AtomicInteger(0);
-        AtomicInteger nIllegal = new AtomicInteger(0);
+        final AtomicInteger nCreated = new AtomicInteger(0);
+        final AtomicInteger nIllegal = new AtomicInteger(0);
 
-        for (Future<HttpResponse> future : futures) {
+        futures.forEach(future -> {
             try {
                 final int statusCode = future.get(300L, MILLISECONDS).getStatusLine().getStatusCode();
                 switch (statusCode) {
@@ -151,7 +158,7 @@ public class EntityHandler implements HttpHandler {
             } catch (TimeoutException e) {
                 future.cancel(true);
             }
-        }
+        });
 
         if (nCreated.get() < ack) {
             sendResponse(http, "Not enough replicas", 504);
@@ -162,7 +169,7 @@ public class EntityHandler implements HttpHandler {
     }
 
     private void handleDeleteRequest(@NotNull String id, int ack, @NotNull List<String> nodes) throws IOException {
-        List<Future<HttpResponse>> futures = new ArrayList<>();
+        final List<Future<HttpResponse>> futures = new ArrayList<>();
 
         nodes.parallelStream().forEach(it -> {
             Future<HttpResponse> response = putExecutor.submit(
@@ -171,8 +178,8 @@ public class EntityHandler implements HttpHandler {
             futures.add(response);
         });
 
-        AtomicInteger nAccepted = new AtomicInteger(0);
-        AtomicInteger nIllegal = new AtomicInteger(0);
+        final AtomicInteger nAccepted = new AtomicInteger(0);
+        final AtomicInteger nIllegal = new AtomicInteger(0);
 
         for (Future<HttpResponse> future : futures) {
             try {
