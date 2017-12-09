@@ -14,8 +14,6 @@ dependencies {
     // Annotations for better code documentation
     compile("com.intellij:annotations:12.0")
 
-    compile ("com.mashape.unirest:unirest-java:1.4.9")
-
     compile("org.apache.httpcomponents:fluent-hc:4.5.3")
 
     // JUnit test framework

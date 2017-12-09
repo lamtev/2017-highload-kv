@@ -2,7 +2,9 @@ package ru.mail.polis.lamtev;
 
 import org.jetbrains.annotations.NotNull;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 
 final class ClusterImpl implements Cluster {
 

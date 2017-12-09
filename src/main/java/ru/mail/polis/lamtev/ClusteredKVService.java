@@ -4,7 +4,7 @@ import com.sun.net.httpserver.HttpServer;
 import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.KVService;
 import ru.mail.polis.lamtev.http_handlers.EntityHandler;
-import ru.mail.polis.lamtev.http_handlers.InternalInteractionHandler;
+import ru.mail.polis.lamtev.http_handlers.InteractionBetweenNodesHandler;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -12,20 +12,24 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import static ru.mail.polis.lamtev.http_handlers.Utils.*;
+import static ru.mail.polis.lamtev.http_handlers.HandlerUtils.*;
 
 public final class ClusteredKVService implements KVService {
+
+    //TODO make threads configurable
+    private static final int N_THREADS = 5;
 
     @NotNull
     private final HttpServer server;
     @NotNull
-    private final ExecutorService executor;
+    private final ExecutorService executor = Executors.newFixedThreadPool(N_THREADS);
+    @NotNull
+    private final ExecutorService dataAccessPool = Executors.newSingleThreadExecutor();
 
     public ClusteredKVService(int port,
                               @NotNull final KVDAO dao,
                               @NotNull final Set<String> topology) throws IOException {
         server = HttpServer.create(new InetSocketAddress(port), 0);
-        executor = Executors.newFixedThreadPool(3);
 
         server.createContext(STATUS_PATH, http -> executor.execute(() -> {
             try {
@@ -41,13 +45,14 @@ public final class ClusteredKVService implements KVService {
                 e.printStackTrace();
             }
         }));
-        server.createContext(INTERNAL_INTERACTION_PATH, http -> executor.execute(() -> {
-            try {
-                new InternalInteractionHandler(dao).handle(http);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }));
+        server.createContext(INTERACTION_BETWEEN_NODES_PATH, http -> dataAccessPool.execute(() -> {
+                    try {
+                        new InteractionBetweenNodesHandler(dao).handle(http);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                })
+        );
     }
 
     @Override

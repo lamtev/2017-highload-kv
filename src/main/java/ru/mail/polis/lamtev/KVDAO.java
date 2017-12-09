@@ -7,9 +7,9 @@ import java.util.NoSuchElementException;
 
 public interface KVDAO {
     @NotNull
-    byte[] get(@NotNull String id) throws NoSuchElementException, IllegalArgumentException, IOException;
+    byte[] get(@NotNull String id) throws NoSuchElementException, IOException;
 
-    void upsert(@NotNull String id, @NotNull byte[] value) throws IllegalArgumentException, IOException;
+    void upsert(@NotNull String id, @NotNull byte[] value) throws IOException;
 
-    void delete(@NotNull String id) throws IllegalArgumentException, IOException;
+    void delete(@NotNull String id) throws IOException;
 }

@@ -10,14 +10,14 @@ import java.util.Arrays;
 import java.util.List;
 
 @SuppressWarnings("WeakerAccess")
-public final class Utils {
+public final class HandlerUtils {
 
     public static final String STATUS_PATH = "/v0/status";
     public static final String ENTITY_PATH = "/v0/entity";
-    public static final String INTERNAL_INTERACTION_PATH = "/v0/internal-connection";
+    public static final String INTERACTION_BETWEEN_NODES_PATH = "/v0/internal-connection";
     public static final String QUERY_PREFIX = "id=";
     public static final String STATUS_RESPONSE = "ONLINE";
-    public static final String SHITTY_QUERY = "Shitty query";
+    public static final String QUERY_IS_INVALID = "Query is invalid";
     public static final String VALUE_BY_ID = "Value by id=";
     public static final String MIGHT_HAVE_BEEN_DELETED = "might have been deleted";
     public static final String HAVE_BEEN_UPDATED = "have been updated";
@@ -25,6 +25,15 @@ public final class Utils {
     public static final String GET = "GET";
     public static final String PUT = "PUT";
     public static final String DELETE = "DELETE";
+    public static final String NOT_ENOUGH_REPLICAS = "Not enough replicas";
+    public static final String NOT_FOUND = "Not found";
+    public static final String ID = "?id=";
+    public static final String CREATED = "Created";
+    public static final String ILLEGAL_ID = "Illegal id";
+    public static final String TOO_SMALL_RF = "Too small RF";
+    public static final String TOO_BIG_RF = "Too big RF";
+    private static final String ID_PREFIX = "id=";
+    private static final String REPLICAS_PREFIX = "&replicas=";
 
     public static void sendResponse(@NotNull HttpExchange http, @NotNull byte[] message, int code) throws IOException {
         http.sendResponseHeaders(code, message.length);
@@ -61,50 +70,48 @@ public final class Utils {
         return values.get(0);
     }
 
-    static final class QueryParser {
-
-        private static final String ID_PREFIX = "id=";
-        private static final String REPLICAS_PREFIX = "&replicas=";
-        @NotNull
-        private final String id;
-        private final int ack;
-        private final int from;
-
-        QueryParser(@NotNull String query) {
-            if (query.contains(REPLICAS_PREFIX)) {
-                id = query.substring(ID_PREFIX.length(), query.indexOf(REPLICAS_PREFIX));
-                final String[] replicas = query.substring(query.indexOf(REPLICAS_PREFIX) + REPLICAS_PREFIX.length()).split("/");
-                final int mbAck = Integer.valueOf(replicas[0]);
-                ack = mbAck > 0 ? mbAck : -1;
-                final int mbFrom = Integer.valueOf(replicas[1]);
-                from = mbFrom > 0 ? mbFrom : -1;
-            } else {
-                id = query.substring(ID_PREFIX.length());
-                ack = from = 0;
+    @NotNull
+    public static QueryParams parseQuery(@NotNull String query) {
+        final String id;
+        final int ack;
+        final int from;
+        if (query.contains(REPLICAS_PREFIX)) {
+            id = query.substring(ID_PREFIX.length(), query.indexOf(REPLICAS_PREFIX));
+            final String[] replicas = query.substring(query.indexOf(REPLICAS_PREFIX) + REPLICAS_PREFIX.length()).split("/");
+            final int mbAck = Integer.valueOf(replicas[0]);
+            ack = mbAck > 0 ? mbAck : -1;
+            final int mbFrom = Integer.valueOf(replicas[1]);
+            from = mbFrom > 0 ? mbFrom : -1;
+        } else {
+            id = query.substring(ID_PREFIX.length());
+            ack = from = 0;
+        }
+        return new QueryParams() {
+            @NotNull
+            @Override
+            public String id() {
+                return id;
             }
-        }
 
+            @Override
+            public int ack() {
+                return ack;
+            }
+
+            @Override
+            public int from() {
+                return from;
+            }
+        };
+    }
+
+    public interface QueryParams {
         @NotNull
-        public String id() {
-            return id;
-        }
+        String id();
 
-        public int ack() {
-            return ack;
-        }
+        int ack();
 
-        public int from() {
-            return from;
-        }
-
-        @Override
-        public String toString() {
-            return "QueryParser{" +
-                    "id='" + id + '\'' +
-                    ", ack=" + ack +
-                    ", from=" + from +
-                    '}';
-        }
+        int from();
     }
 
 }

@@ -8,17 +8,17 @@ import ru.mail.polis.lamtev.KVDAO;
 import java.io.IOException;
 import java.util.NoSuchElementException;
 
-import static ru.mail.polis.lamtev.http_handlers.Utils.*;
+import static ru.mail.polis.lamtev.http_handlers.HandlerUtils.*;
 
 //TODO make internal interaction secure
-public class InternalInteractionHandler implements HttpHandler {
+public class InteractionBetweenNodesHandler implements HttpHandler {
 
     @NotNull
     private final KVDAO dao;
     @NotNull
     private HttpExchange http;
 
-    public InternalInteractionHandler(@NotNull KVDAO dao) {
+    public InteractionBetweenNodesHandler(@NotNull KVDAO dao) {
         this.dao = dao;
     }
 
@@ -26,13 +26,8 @@ public class InternalInteractionHandler implements HttpHandler {
     public void handle(HttpExchange http) throws IOException {
         this.http = http;
         final String query = http.getRequestURI().getQuery();
-        if (!query.startsWith(QUERY_PREFIX)) {
-            sendResponse(http, SHITTY_QUERY, 400);
-            return;
-        }
-
-        final QueryParser parser = new QueryParser(query);
-        final String id = parser.id();
+        final QueryParams params = parseQuery(query);
+        final String id = params.id();
 
         final String method = http.getRequestMethod();
         switch (method) {
@@ -57,31 +52,18 @@ public class InternalInteractionHandler implements HttpHandler {
         } catch (NoSuchElementException e) {
             sendResponse(http, e.getMessage(), 404);
             return;
-        } catch (IllegalArgumentException e) {
-            sendResponse(http, e.getMessage(), 400);
-            return;
         }
         sendResponse(http, value, 200);
     }
 
     private void handlePutRequest(@NotNull String id) throws IOException {
         final byte[] value = readData(http.getRequestBody());
-        try {
-            dao.upsert(id, value);
-        } catch (IllegalArgumentException e) {
-            sendResponse(http, e.getMessage(), 400);
-            return;
-        }
+        dao.upsert(id, value);
         sendResponse(http, VALUE_BY_ID + id + HAVE_BEEN_UPDATED, 201);
     }
 
     private void handleDeleteRequest(@NotNull String id) throws IOException {
-        try {
-            dao.delete(id);
-        } catch (IllegalArgumentException e) {
-            sendResponse(http, e.getMessage(), 400);
-            return;
-        }
+        dao.delete(id);
         sendResponse(http, VALUE_BY_ID + id + MIGHT_HAVE_BEEN_DELETED, 202);
     }
 

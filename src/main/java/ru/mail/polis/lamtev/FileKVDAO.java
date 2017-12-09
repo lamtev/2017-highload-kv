@@ -11,6 +11,8 @@ import java.util.Set;
 
 public final class FileKVDAO implements KVDAO {
 
+    public static final String DELETED = "DELETED";
+    private static final String CAN_T_FIND_FILE_WITH_ID = "Can't find file with id=";
     @NotNull
     private final String dir;
     @NotNull
@@ -22,33 +24,24 @@ public final class FileKVDAO implements KVDAO {
 
     @NotNull
     @Override
-    public byte[] get(@NotNull String id) throws NoSuchElementException, IllegalArgumentException, IOException {
-        checkId(id);
+    public byte[] get(@NotNull String id) throws NoSuchElementException, IOException {
         if (deletedIds.contains(id)) {
-            throw new NoSuchElementException("DELETED");
+            throw new NoSuchElementException(DELETED);
         } else if (Files.notExists(Paths.get(dir, id))) {
-            throw new NoSuchElementException("Can't find file with id=" + id);
+            throw new NoSuchElementException(CAN_T_FIND_FILE_WITH_ID + id);
         }
         return Files.readAllBytes(Paths.get(dir, id));
     }
 
     @Override
-    public void upsert(@NotNull String id, @NotNull byte[] value) throws IllegalArgumentException, IOException {
-        checkId(id);
+    public void upsert(@NotNull String id, @NotNull byte[] value) throws IOException {
         Files.write(Paths.get(dir, id), value);
     }
 
     @Override
-    public void delete(@NotNull String id) throws IllegalArgumentException, IOException {
-        checkId(id);
+    public void delete(@NotNull String id) throws IOException {
         if (Files.deleteIfExists(Paths.get(dir, id))) {
             deletedIds.add(id);
-        }
-    }
-
-    private void checkId(@NotNull String id) {
-        if (id.isEmpty()) {
-            throw new IllegalArgumentException("Id is empty");
         }
     }
 
