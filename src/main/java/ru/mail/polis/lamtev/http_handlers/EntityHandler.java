@@ -19,18 +19,18 @@ import static ru.mail.polis.lamtev.FileKVDAO.DELETED;
 import static ru.mail.polis.lamtev.http_handlers.HandlerUtils.*;
 
 //TODO logging
-public class EntityHandler implements HttpHandler {
+public final class EntityHandler implements HttpHandler {
 
     @NotNull
     private final Cluster cluster;
     @NotNull
-    private final ExecutorService putPool;
+    private final ExecutorService poolOfRequestsToNodes;
     @NotNull
     private HttpExchange http;
 
     public EntityHandler(@NotNull Cluster cluster) {
         this.cluster = cluster;
-        this.putPool = Executors.newFixedThreadPool(cluster.numberOfNodes());
+        this.poolOfRequestsToNodes = Executors.newFixedThreadPool(cluster.numberOfNodes());
     }
 
     @Override
@@ -66,7 +66,7 @@ public class EntityHandler implements HttpHandler {
 
     private void handleGetRequest(@NotNull String id, int ack, @NotNull List<String> nodes) throws IOException {
         final List<Future<HttpResponse>> futures = nodes.parallelStream()
-                .map(node -> putPool.submit(
+                .map(node -> poolOfRequestsToNodes.submit(
                         () -> Request.Get(node + INTERACTION_BETWEEN_NODES_PATH + ID + id)
                                 .execute()
                                 .returnResponse()
@@ -107,17 +107,30 @@ public class EntityHandler implements HttpHandler {
         if (nOk.get() + nNotFound.get() + nDeleted.get() < ack) {
             sendResponse(http, NOT_ENOUGH_REPLICAS, 504);
         } else if (nDeleted.get() > 0 || nNotFound.get() >= ack) {
+            if (nDeleted.get() == ack) {
+                deleteDeletedIds(nodes, id);
+            }
             sendResponse(http, NOT_FOUND, 404);
         } else {
             sendResponse(http, consistentValue(values, ack), 200);
         }
     }
 
+    private void deleteDeletedIds(@NotNull List<String> nodes, @NotNull String id) {
+        nodes.parallelStream().forEach(node ->
+                poolOfRequestsToNodes.submit(
+                        () -> Request.Delete(node + INTERACTION_BETWEEN_NODES_PATH + ID + id + DELETE_DELETED_ID_TRUE)
+                                .execute()
+                                .returnResponse()
+                )
+        );
+    }
+
     private void handlePutRequest(@NotNull String id, int ack, @NotNull List<String> nodes) throws IOException {
         final byte[] data = readData(http.getRequestBody());
 
         final List<Future<HttpResponse>> futures = nodes.parallelStream()
-                .map(node -> putPool.submit(
+                .map(node -> poolOfRequestsToNodes.submit(
                         () -> Request.Put(node + INTERACTION_BETWEEN_NODES_PATH + ID + id)
                                 .bodyByteArray(data)
                                 .execute()
@@ -156,7 +169,7 @@ public class EntityHandler implements HttpHandler {
 
     private void handleDeleteRequest(@NotNull String id, int ack, @NotNull List<String> nodes) throws IOException {
         final List<Future<HttpResponse>> futures = nodes.parallelStream()
-                .map(node -> putPool.submit(
+                .map(node -> poolOfRequestsToNodes.submit(
                         () -> Request.Delete(node + INTERACTION_BETWEEN_NODES_PATH + ID + id)
                                 .execute()
                                 .returnResponse()

@@ -46,6 +46,11 @@ public final class FileKVDAO implements KVDAO {
         }
     }
 
+    @Override
+    public void deleteDeletedId(@NotNull String id) throws IOException {
+        Files.deleteIfExists(Paths.get(deletedIdsDir, id));
+    }
+
     private void createDeletedIdsDirectory() {
         try {
             Files.createDirectory(Paths.get(deletedIdsDir));

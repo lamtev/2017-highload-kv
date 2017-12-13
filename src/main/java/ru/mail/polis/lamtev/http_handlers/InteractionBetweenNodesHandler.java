@@ -11,7 +11,7 @@ import java.util.NoSuchElementException;
 import static ru.mail.polis.lamtev.http_handlers.HandlerUtils.*;
 
 //TODO make internal interaction secure
-public class InteractionBetweenNodesHandler implements HttpHandler {
+public final class InteractionBetweenNodesHandler implements HttpHandler {
 
     @NotNull
     private final KVDAO dao;
@@ -38,7 +38,7 @@ public class InteractionBetweenNodesHandler implements HttpHandler {
                 handlePutRequest(id);
                 break;
             case DELETE:
-                handleDeleteRequest(id);
+                handleDeleteRequest(id, params.deleteDeletedId());
                 break;
             default:
                 sendResponse(http, method + NOT_ALLOWED, 405);
@@ -62,9 +62,14 @@ public class InteractionBetweenNodesHandler implements HttpHandler {
         sendResponse(http, VALUE_BY_ID + id + HAVE_BEEN_UPDATED, 201);
     }
 
-    private void handleDeleteRequest(@NotNull String id) throws IOException {
-        dao.delete(id);
-        sendResponse(http, VALUE_BY_ID + id + MIGHT_HAVE_BEEN_DELETED, 202);
+    private void handleDeleteRequest(@NotNull String id, boolean deleteDeletedId) throws IOException {
+        if (!deleteDeletedId) {
+            dao.delete(id);
+            sendResponse(http, VALUE_BY_ID + id + MIGHT_HAVE_BEEN_DELETED, 202);
+        } else {
+            dao.deleteDeletedId(id);
+            sendResponse(http, DELETED_ID + id + MIGHT_HAVE_BEEN_DELETED, 202);
+        }
     }
 
 }

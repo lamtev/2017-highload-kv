@@ -12,4 +12,6 @@ public interface KVDAO {
     void upsert(@NotNull String id, @NotNull byte[] value) throws IOException;
 
     void delete(@NotNull String id) throws IOException;
+
+    void deleteDeletedId(@NotNull String id) throws IOException;
 }

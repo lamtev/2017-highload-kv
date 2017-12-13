@@ -32,8 +32,11 @@ public final class HandlerUtils {
     public static final String ILLEGAL_ID = "Illegal id";
     public static final String TOO_SMALL_RF = "Too small RF";
     public static final String TOO_BIG_RF = "Too big RF";
+    protected static final String DELETED_ID = "Deleted id=";
+    protected static final String DELETE_DELETED_ID_TRUE = "&deleteDeletedId=true";
     private static final String ID_PREFIX = "id=";
     private static final String REPLICAS_PREFIX = "&replicas=";
+    private static final String DELETE_DELETED_IDS = "&deleteDeletedId=";
 
     public static void sendResponse(@NotNull HttpExchange http, @NotNull byte[] message, int code) throws IOException {
         http.sendResponseHeaders(code, message.length);
@@ -75,6 +78,7 @@ public final class HandlerUtils {
         final String id;
         final int ack;
         final int from;
+        final boolean deleteDeletedId;
         if (query.contains(REPLICAS_PREFIX)) {
             id = query.substring(ID_PREFIX.length(), query.indexOf(REPLICAS_PREFIX));
             final String[] replicas = query.substring(query.indexOf(REPLICAS_PREFIX) + REPLICAS_PREFIX.length()).split("/");
@@ -82,9 +86,15 @@ public final class HandlerUtils {
             ack = mbAck > 0 ? mbAck : -1;
             final int mbFrom = Integer.valueOf(replicas[1]);
             from = mbFrom > 0 ? mbFrom : -1;
+            deleteDeletedId = false;
+        } else if (query.contains(DELETE_DELETED_IDS)) {
+            id = query.substring(ID_PREFIX.length(), query.indexOf(DELETE_DELETED_IDS));
+            ack = from = 0;
+            deleteDeletedId = Boolean.valueOf(query.substring(query.indexOf(DELETE_DELETED_IDS) + DELETE_DELETED_IDS.length()));
         } else {
             id = query.substring(ID_PREFIX.length());
             ack = from = 0;
+            deleteDeletedId = false;
         }
         return new QueryParams() {
             @NotNull
@@ -102,6 +112,11 @@ public final class HandlerUtils {
             public int from() {
                 return from;
             }
+
+            @Override
+            public boolean deleteDeletedId() {
+                return deleteDeletedId;
+            }
         };
     }
 
@@ -112,6 +127,8 @@ public final class HandlerUtils {
         int ack();
 
         int from();
+
+        boolean deleteDeletedId();
     }
 
 }
