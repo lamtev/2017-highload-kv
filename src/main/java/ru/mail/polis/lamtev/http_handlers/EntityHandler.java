@@ -12,9 +12,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.stream.Collectors.toList;
 import static ru.mail.polis.lamtev.FileKVDAO.DELETED;
 import static ru.mail.polis.lamtev.http_handlers.HandlerUtils.*;
 
@@ -65,13 +65,7 @@ public final class EntityHandler implements HttpHandler {
     }
 
     private void handleGetRequest(@NotNull String id, int ack, @NotNull List<String> nodes) throws IOException {
-        final List<Future<HttpResponse>> futures = nodes.parallelStream()
-                .map(node -> poolOfRequestsToNodes.submit(
-                        () -> Request.Get(node + INTERACTION_BETWEEN_NODES_PATH + ID + id)
-                                .execute()
-                                .returnResponse()
-                ))
-                .collect(Collectors.toList());
+        final List<Future<HttpResponse>> futures = sendGetRequests(nodes, id);
 
         final AtomicInteger nOk = new AtomicInteger(0);
         final AtomicInteger nNotFound = new AtomicInteger(0);
@@ -107,36 +101,26 @@ public final class EntityHandler implements HttpHandler {
         if (nOk.get() + nNotFound.get() + nDeleted.get() < ack) {
             sendResponse(http, NOT_ENOUGH_REPLICAS, 504);
         } else if (nDeleted.get() > 0 || nNotFound.get() >= ack) {
-            if (nDeleted.get() == ack) {
-                deleteDeletedIds(nodes, id);
-            }
             sendResponse(http, NOT_FOUND, 404);
         } else {
             sendResponse(http, consistentValue(values, ack), 200);
         }
     }
 
-    private void deleteDeletedIds(@NotNull List<String> nodes, @NotNull String id) {
-        nodes.parallelStream().forEach(node ->
-                poolOfRequestsToNodes.submit(
-                        () -> Request.Delete(node + INTERACTION_BETWEEN_NODES_PATH + ID + id + DELETE_DELETED_ID_TRUE)
+    private List<Future<HttpResponse>> sendGetRequests(@NotNull List<String> nodes, @NotNull String id) {
+        return nodes.parallelStream()
+                .map(node -> poolOfRequestsToNodes.submit(
+                        () -> Request.Get(node + INTERACTION_BETWEEN_NODES_PATH + ID + id)
                                 .execute()
                                 .returnResponse()
-                )
-        );
+                ))
+                .collect(toList());
     }
 
     private void handlePutRequest(@NotNull String id, int ack, @NotNull List<String> nodes) throws IOException {
         final byte[] data = readData(http.getRequestBody());
 
-        final List<Future<HttpResponse>> futures = nodes.parallelStream()
-                .map(node -> poolOfRequestsToNodes.submit(
-                        () -> Request.Put(node + INTERACTION_BETWEEN_NODES_PATH + ID + id)
-                                .bodyByteArray(data)
-                                .execute()
-                                .returnResponse()
-                ))
-                .collect(Collectors.toList());
+        final List<Future<HttpResponse>> futures = sendPutRequests(id, nodes, data);
 
         final AtomicInteger nCreated = new AtomicInteger(0);
         final AtomicInteger nIllegal = new AtomicInteger(0);
@@ -167,14 +151,19 @@ public final class EntityHandler implements HttpHandler {
 
     }
 
-    private void handleDeleteRequest(@NotNull String id, int ack, @NotNull List<String> nodes) throws IOException {
-        final List<Future<HttpResponse>> futures = nodes.parallelStream()
+    private List<Future<HttpResponse>> sendPutRequests(@NotNull String id, @NotNull List<String> nodes, byte[] data) {
+        return nodes.parallelStream()
                 .map(node -> poolOfRequestsToNodes.submit(
-                        () -> Request.Delete(node + INTERACTION_BETWEEN_NODES_PATH + ID + id)
+                        () -> Request.Put(node + INTERACTION_BETWEEN_NODES_PATH + ID + id)
+                                .bodyByteArray(data)
                                 .execute()
                                 .returnResponse()
                 ))
-                .collect(Collectors.toList());
+                .collect(toList());
+    }
+
+    private void handleDeleteRequest(@NotNull String id, int ack, @NotNull List<String> nodes) throws IOException {
+        final List<Future<HttpResponse>> futures = sendDeleteRequests(id, nodes);
 
         final AtomicInteger nAccepted = new AtomicInteger(0);
         final AtomicInteger nIllegal = new AtomicInteger(0);
@@ -202,6 +191,51 @@ public final class EntityHandler implements HttpHandler {
         } else {
             sendResponse(http, MIGHT_HAVE_BEEN_DELETED, 202);
         }
+
+        attemptDeleteUnnecessaryDeletedId(nodes, id);
+    }
+
+    private List<Future<HttpResponse>> sendDeleteRequests(@NotNull String id, @NotNull List<String> nodes) {
+        return nodes.parallelStream()
+                .map(node -> poolOfRequestsToNodes.submit(
+                        () -> Request.Delete(node + INTERACTION_BETWEEN_NODES_PATH + ID + id)
+                                .execute()
+                                .returnResponse()
+                ))
+                .collect(toList());
+    }
+
+    private void attemptDeleteUnnecessaryDeletedId(@NotNull List<String> nodes, @NotNull String id) throws IOException {
+        final List<Future<HttpResponse>> futures = sendGetRequests(nodes, id);
+
+        final AtomicInteger nDeleted = new AtomicInteger(0);
+
+        for (Future<HttpResponse> future : futures) {
+            try {
+                final HttpResponse response = future.get(300L, MILLISECONDS);
+                final int statusCode = response.getStatusLine().getStatusCode();
+                final byte[] value = readData(response.getEntity().getContent());
+                if (statusCode == 404 && DELETED.equals(new String(value))) {
+                    nDeleted.incrementAndGet();
+                }
+            } catch (InterruptedException | ExecutionException | TimeoutException e) {
+                future.cancel(true);
+            }
+        }
+
+        if (nDeleted.get() == cluster.numberOfNodes()) {
+            deleteDeletedIds(nodes, id);
+        }
+    }
+
+    private void deleteDeletedIds(@NotNull List<String> nodes, @NotNull String id) {
+        nodes.parallelStream().forEach(node ->
+                poolOfRequestsToNodes.submit(
+                        () -> Request.Delete(node + INTERACTION_BETWEEN_NODES_PATH + ID + id + DELETE_DELETED_ID_TRUE)
+                                .execute()
+                                .returnResponse()
+                )
+        );
     }
 
     private boolean queryIsInvalid(@NotNull String query) throws IOException {
