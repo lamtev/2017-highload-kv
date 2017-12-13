@@ -48,7 +48,7 @@ public final class HandlerUtils {
     @NotNull
     public static byte[] readData(@NotNull InputStream is) throws IOException {
         try (ByteArrayOutputStream os = new ByteArrayOutputStream()) {
-            byte[] buffer = new byte[1024];
+            final byte[] buffer = new byte[1024];
             for (int len; (len = is.read(buffer, 0, 1024)) != -1; ) {
                 os.write(buffer, 0, len);
             }
@@ -60,7 +60,7 @@ public final class HandlerUtils {
     @NotNull
     public static byte[] consistentValue(@NotNull List<byte[]> values, int ack) {
         for (byte[] value : values) {
-            int cnt = (int) values.stream()
+            final int cnt = (int) values.stream()
                     .filter(it -> Arrays.equals(it, value))
                     .count();
             if (cnt == ack) {

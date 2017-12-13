@@ -158,7 +158,6 @@ public class EntityHandler implements HttpHandler {
         final List<Future<HttpResponse>> futures = nodes.parallelStream()
                 .map(node -> putPool.submit(
                         () -> Request.Delete(node + INTERACTION_BETWEEN_NODES_PATH + ID + id)
-
                                 .execute()
                                 .returnResponse()
                 ))
