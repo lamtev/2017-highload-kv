@@ -4,5 +4,6 @@ phantom:
     load_type: rps
     schedule: const(200, 1m)
   ammo_type: phantom
+  instances: 4
 telegraf:
   enabled: false # let's disable telegraf monitoring for this time
