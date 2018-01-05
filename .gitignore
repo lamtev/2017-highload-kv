@@ -14,7 +14,8 @@
 !settings.gradle
 
 # And yandex-tank
-!/yandex-tank/**/*
+!/yandex-tank/*
+!/yandex-tank/ammo_gens/*
 
 # ...even if they are in subdirectories
 !*/
