@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 # -*- coding: utf-8 -*-
 
 import sys
@@ -9,14 +9,14 @@ def main():
         sys.stdout.write('Invalid number of arguments')
         return
 
-    mthd: str = sys.argv[1]
-    rf: str = sys.argv[2]
-    n: str = sys.argv[3]
-    ow: bool = sys.argv[4] == '+'
+    mthd = sys.argv[1]
+    rf = sys.argv[2]
+    n = sys.argv[3]
+    ow = sys.argv[4] == '+'
 
     rfstr = rf.replace('/', '')
     owstr = '_ow' if ow else ''
-    file = open('data_{mthd}_{rf}_{n}{ow}'.format(method=mthd, rf=rfstr, n=n, ow=owstr), 'w')
+    file = open('data_{mthd}_{rf}_{n}{ow}'.format(mthd=mthd, rf=rfstr, n=n, ow=owstr), 'w')
 
     if mthd == 'PUTGET':
         N = int(int(n) / 2)
