@@ -1,5 +1,7 @@
 // See https://gradle.org and https://github.com/gradle/kotlin-dsl
 
+import org.gradle.jvm.tasks.Jar
+
 // Apply the java plugin to add support for Java
 plugins {
     java
@@ -38,4 +40,20 @@ application {
 
     // And limit Xmx
     applicationDefaultJvmArgs = listOf("-Xmx1g", "-Xverify:none")
+}
+
+
+val fatJar = task("fatJar", type = Jar::class) {
+    baseName = "node"
+    manifest {
+        attributes["Main-Class"] = "ru.mail.polis.ClusterNode"
+    }
+    from(configurations.runtime.map({ if (it.isDirectory) it else zipTree(it) }))
+    with(tasks["jar"] as CopySpec)
+}
+
+tasks {
+    "build" {
+        dependsOn(fatJar)
+    }
 }

@@ -21,7 +21,7 @@ import static ru.mail.polis.lamtev.http_handlers.HandlerUtils.*;
 //TODO logging
 public final class EntityHandler implements HttpHandler {
 
-    private static final long TIMEOUT = 50L;
+    private static final long TIMEOUT = 250L;
     @NotNull
     private final Cluster cluster;
     @NotNull
