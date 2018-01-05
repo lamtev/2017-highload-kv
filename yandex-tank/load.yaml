@@ -1,0 +1,8 @@
+phantom:
+  address: 192.168.86.41:8081
+  load_profile:
+    load_type: rps
+    schedule: const(200, 1m)
+  ammo_type: phantom
+telegraf:
+  enabled: false # let's disable telegraf monitoring for this time

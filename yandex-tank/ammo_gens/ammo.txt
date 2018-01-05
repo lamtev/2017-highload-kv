@@ -1,0 +1,7 @@
+109 good
+GET /v0/entity?id=123 HTTP/1.1
+Host: 192.168.56.1:8080
+User-Agent: Tank
+Accept: */*
+Connection: Close
+
