@@ -16,15 +16,12 @@ import static ru.mail.polis.lamtev.http_handlers.HandlerUtils.*;
 
 public final class ClusteredKVService implements KVService {
 
-    //TODO make threads configurable
-    private static final int N_THREADS = 5;
+    private static final int N_THREADS = 2 * Runtime.getRuntime().availableProcessors();
 
     @NotNull
     private final HttpServer server;
     @NotNull
     private final ExecutorService executor = Executors.newFixedThreadPool(N_THREADS);
-    @NotNull
-    private final ExecutorService dataAccessPool = Executors.newSingleThreadExecutor();
 
     public ClusteredKVService(int port,
                               @NotNull final KVDAO dao,
@@ -45,7 +42,7 @@ public final class ClusteredKVService implements KVService {
                 e.printStackTrace();
             }
         }));
-        server.createContext(INTERACTION_BETWEEN_NODES_PATH, http -> dataAccessPool.execute(() -> {
+        server.createContext(INTERACTION_BETWEEN_NODES_PATH, http -> executor.execute(() -> {
                     try {
                         new InteractionBetweenNodesHandler(dao).handle(http);
                     } catch (IOException e) {
@@ -63,6 +60,7 @@ public final class ClusteredKVService implements KVService {
     @Override
     public void stop() {
         server.stop(0);
+        executor.shutdown();
     }
 
 }
