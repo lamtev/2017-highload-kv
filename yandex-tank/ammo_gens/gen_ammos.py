@@ -22,3 +22,4 @@ for mthd in methods:
 for f in os.listdir('.'):
     newf = f.replace('data', 'ammo')
     os.system('cat {f} | python3 ../ammo_gens/make_ammo.py > {newf}.txt'.format(f=f, newf=newf))
+
