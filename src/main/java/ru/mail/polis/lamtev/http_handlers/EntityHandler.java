@@ -3,18 +3,23 @@ package ru.mail.polis.lamtev.http_handlers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import org.apache.http.HttpResponse;
-import org.apache.http.client.fluent.Request;
+import org.apache.http.HttpVersion;
+import org.apache.http.impl.EnglishReasonPhraseCatalog;
+import org.apache.http.message.BasicHttpResponse;
+import org.apache.http.message.BasicStatusLine;
 import org.jetbrains.annotations.NotNull;
+import ru.mail.polis.lamtev.Client;
 import ru.mail.polis.lamtev.Cluster;
+import ru.mail.polis.lamtev.HttpClient;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.stream.Collectors.toList;
 import static ru.mail.polis.lamtev.FileKVDAO.DELETED;
 import static ru.mail.polis.lamtev.http_handlers.HandlerUtils.*;
@@ -28,11 +33,25 @@ public final class EntityHandler implements HttpHandler {
     @NotNull
     private final ExecutorService poolOfRequestsToNodes;
     @NotNull
+    private final Client client = new HttpClient();
+    @NotNull
     private HttpExchange http;
 
     public EntityHandler(@NotNull Cluster cluster) {
         this.cluster = cluster;
         this.poolOfRequestsToNodes = Executors.newFixedThreadPool(cluster.numberOfNodes());
+    }
+
+    private static HttpResponse responseOf(@NotNull Throwable throwable, @NotNull String method) {
+        //TODO log
+        System.out.println(throwable + " in " + method);
+        return new BasicHttpResponse(
+                new BasicStatusLine(
+                        HttpVersion.HTTP_1_1,
+                        500,
+                        EnglishReasonPhraseCatalog.INSTANCE.getReason(500, Locale.ENGLISH)
+                )
+        );
     }
 
     @Override
@@ -67,16 +86,15 @@ public final class EntityHandler implements HttpHandler {
     }
 
     private void handleGetRequest(@NotNull String id, int ack, @NotNull List<String> nodes) throws IOException {
-        final List<Future<HttpResponse>> futures = sendGetRequests(nodes, id);
+        final List<CompletableFuture<HttpResponse>> futures = sendGetRequests(nodes, id);
 
         final AtomicInteger nOk = new AtomicInteger(0);
         final AtomicInteger nNotFound = new AtomicInteger(0);
         final AtomicInteger nDeleted = new AtomicInteger(0);
         final AtomicReference<List<byte[]>> values = new AtomicReference<>(new ArrayList<>());
 
-        futures.parallelStream().forEach(future -> {
+        futures.forEach(future -> future.thenAccept(response -> {
             try {
-                final HttpResponse response = future.get(TIMEOUT, MILLISECONDS);
                 final int statusCode = response.getStatusLine().getStatusCode();
                 final byte[] value = readData(response.getEntity().getContent());
                 switch (statusCode) {
@@ -91,11 +109,16 @@ public final class EntityHandler implements HttpHandler {
                             nNotFound.incrementAndGet();
                         }
                         break;
-                    default:
-                        throw new TimeoutException();
                 }
-            } catch (InterruptedException | ExecutionException | TimeoutException | IOException e) {
-                future.cancel(true);
+            } catch (IOException ignored) {
+            }
+        }));
+
+        futures.parallelStream().forEach(future -> {
+            try {
+                future.get(TIMEOUT, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException | ExecutionException | TimeoutException e) {
+                e.printStackTrace();
             }
         });
 
@@ -108,38 +131,51 @@ public final class EntityHandler implements HttpHandler {
         }
     }
 
-    private List<Future<HttpResponse>> sendGetRequests(@NotNull List<String> nodes, @NotNull String id) {
+    private static <T> CompletableFuture<Void> allOfWithTimeout(List<CompletableFuture<T>> cfs, long timeoutMillis) {
+        cfs.parallelStream().forEach(future -> {
+            try {
+                future.get(timeoutMillis, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException | ExecutionException | TimeoutException e) {
+                e.printStackTrace();
+            }
+        });
+        return CompletableFuture.allOf(cfs.toArray(new CompletableFuture[cfs.size()]));
+    }
+
+    private List<CompletableFuture<HttpResponse>> sendGetRequests(@NotNull List<String> nodes, @NotNull String id) {
         return nodes.stream()
-                .map(node -> poolOfRequestsToNodes.submit(
-                        () -> Request.Get(node + INTERACTION_BETWEEN_NODES_PATH + ID + id)
-                                .execute()
-                                .returnResponse()
-                ))
+                .map(it ->
+                        CompletableFuture.supplyAsync(() -> client.sendGetRequest(it, id), poolOfRequestsToNodes)
+                                .exceptionally(e -> responseOf(e, GET))
+                )
                 .collect(toList());
+
     }
 
     private void handlePutRequest(@NotNull String id, int ack, @NotNull List<String> nodes) throws IOException {
         final byte[] data = readData(http.getRequestBody());
-        final List<Future<HttpResponse>> futures = sendPutRequests(id, nodes, data);
+        final List<CompletableFuture<HttpResponse>> futures = sendPutRequests(nodes, id, data);
 
         final AtomicInteger nCreated = new AtomicInteger(0);
         final AtomicInteger nIllegal = new AtomicInteger(0);
 
+        futures.forEach(future -> future.thenAccept(response -> {
+            final int statusCode = response.getStatusLine().getStatusCode();
+            switch (statusCode) {
+                case 201:
+                    nCreated.incrementAndGet();
+                    break;
+                case 400:
+                    nIllegal.incrementAndGet();
+                    break;
+            }
+        }));
+
         futures.parallelStream().forEach(future -> {
             try {
-                final int statusCode = future.get(TIMEOUT, MILLISECONDS).getStatusLine().getStatusCode();
-                switch (statusCode) {
-                    case 201:
-                        nCreated.incrementAndGet();
-                        break;
-                    case 400:
-                        nIllegal.incrementAndGet();
-                        break;
-                    default:
-                        throw new TimeoutException();
-                }
+                future.get(TIMEOUT, TimeUnit.MILLISECONDS);
             } catch (InterruptedException | ExecutionException | TimeoutException e) {
-                future.cancel(true);
+                e.printStackTrace();
             }
         });
 
@@ -151,38 +187,38 @@ public final class EntityHandler implements HttpHandler {
 
     }
 
-    private List<Future<HttpResponse>> sendPutRequests(@NotNull String id, @NotNull List<String> nodes, byte[] data) {
+    private List<CompletableFuture<HttpResponse>> sendPutRequests(@NotNull List<String> nodes, @NotNull String id, byte[] data) {
         return nodes.stream()
-                .map(node -> poolOfRequestsToNodes.submit(
-                        () -> Request.Put(node + INTERACTION_BETWEEN_NODES_PATH + ID + id)
-                                .bodyByteArray(data)
-                                .execute()
-                                .returnResponse()
-                ))
+                .map(it ->
+                        CompletableFuture.supplyAsync(() -> client.sendPutRequest(it, id, data), poolOfRequestsToNodes)
+                                .exceptionally(e -> responseOf(e, PUT))
+                )
                 .collect(toList());
     }
 
     private void handleDeleteRequest(@NotNull String id, int ack, @NotNull List<String> nodes) throws IOException {
-        final List<Future<HttpResponse>> futures = sendDeleteRequests(id, nodes);
+        final List<CompletableFuture<HttpResponse>> futures = sendDeleteRequests(id, nodes);
 
         final AtomicInteger nAccepted = new AtomicInteger(0);
         final AtomicInteger nIllegal = new AtomicInteger(0);
 
+        futures.forEach(future -> future.thenAccept(response -> {
+            final int statusCode = response.getStatusLine().getStatusCode();
+            switch (statusCode) {
+                case 202:
+                    nAccepted.incrementAndGet();
+                    break;
+                case 400:
+                    nIllegal.incrementAndGet();
+                    break;
+            }
+        }));
+
         futures.parallelStream().forEach(future -> {
             try {
-                final int statusCode = future.get(TIMEOUT, MILLISECONDS).getStatusLine().getStatusCode();
-                switch (statusCode) {
-                    case 202:
-                        nAccepted.incrementAndGet();
-                        break;
-                    case 400:
-                        nIllegal.incrementAndGet();
-                        break;
-                    default:
-                        throw new TimeoutException();
-                }
+                future.get(TIMEOUT, TimeUnit.MILLISECONDS);
             } catch (InterruptedException | ExecutionException | TimeoutException e) {
-                future.cancel(true);
+                e.printStackTrace();
             }
         });
 
@@ -195,31 +231,36 @@ public final class EntityHandler implements HttpHandler {
         attemptDeleteUnnecessaryDeletedId(nodes, id);
     }
 
-    private List<Future<HttpResponse>> sendDeleteRequests(@NotNull String id, @NotNull List<String> nodes) {
+    private List<CompletableFuture<HttpResponse>> sendDeleteRequests(@NotNull String id, @NotNull List<String> nodes) {
         return nodes.stream()
-                .map(node -> poolOfRequestsToNodes.submit(
-                        () -> Request.Delete(node + INTERACTION_BETWEEN_NODES_PATH + ID + id)
-                                .execute()
-                                .returnResponse()
-                ))
+                .map(it ->
+                        CompletableFuture.supplyAsync(() -> client.sendDeleteRequest(it, id), poolOfRequestsToNodes)
+                                .exceptionally(e -> responseOf(e, DELETE))
+                )
                 .collect(toList());
     }
 
     private void attemptDeleteUnnecessaryDeletedId(@NotNull List<String> nodes, @NotNull String id) {
-        final List<Future<HttpResponse>> futures = sendGetRequests(nodes, id);
+        final List<CompletableFuture<HttpResponse>> futures = sendGetRequests(nodes, id);
 
         final AtomicInteger nDeleted = new AtomicInteger(0);
 
-        futures.parallelStream().forEach(future -> {
+        futures.forEach(future -> future.thenAccept(response -> {
             try {
-                final HttpResponse response = future.get(TIMEOUT, MILLISECONDS);
                 final int statusCode = response.getStatusLine().getStatusCode();
                 final byte[] value = readData(response.getEntity().getContent());
                 if (statusCode == 404 && DELETED.equals(new String(value))) {
                     nDeleted.incrementAndGet();
                 }
-            } catch (InterruptedException | ExecutionException | TimeoutException | IOException e) {
-                future.cancel(true);
+            } catch (IOException ignored) {
+            }
+        }));
+
+        futures.parallelStream().forEach(future -> {
+            try {
+                future.get(TIMEOUT, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException | ExecutionException | TimeoutException e) {
+                e.printStackTrace();
             }
         });
 
@@ -229,11 +270,9 @@ public final class EntityHandler implements HttpHandler {
     }
 
     private void deleteDeletedIds(@NotNull List<String> nodes, @NotNull String id) {
-        nodes.forEach(node ->
-                poolOfRequestsToNodes.submit(
-                        () -> Request.Delete(node + INTERACTION_BETWEEN_NODES_PATH + ID + id + DELETE_DELETED_ID_TRUE)
-                                .execute()
-                                .returnResponse()
+        nodes.forEach(
+                node -> CompletableFuture.supplyAsync(
+                        () -> client.sendDeleteRequest(node, id + DELETE_DELETED_ID_TRUE)
                 )
         );
     }

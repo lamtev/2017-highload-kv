@@ -16,7 +16,7 @@ import static ru.mail.polis.lamtev.http_handlers.HandlerUtils.*;
 
 public final class ClusteredKVService implements KVService {
 
-    private static final int N_THREADS = 2 * Runtime.getRuntime().availableProcessors();
+    private static final int N_THREADS = Runtime.getRuntime().availableProcessors() + 1;
 
     @NotNull
     private final HttpServer server;
