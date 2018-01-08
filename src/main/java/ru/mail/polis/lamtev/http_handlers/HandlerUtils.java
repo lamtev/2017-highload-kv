@@ -7,13 +7,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.concurrent.*;
 
 import static java.util.concurrent.CompletableFuture.completedFuture;
 
@@ -150,7 +146,7 @@ public final class HandlerUtils {
     @NotNull
     static <T> CompletableFuture<List<CompletableFuture<T>>> futureAllOfWithinATimeout(
             @NotNull List<CompletableFuture<T>> cfs, long timeoutMillis) {
-        final List<CompletableFuture<T>> list = new ArrayList<>();
+        final List<CompletableFuture<T>> list = new CopyOnWriteArrayList<>();
         cfs.parallelStream().forEach(future -> {
             try {
                 list.add(completedFuture(future.get(timeoutMillis, TimeUnit.MILLISECONDS)));

@@ -7,13 +7,12 @@ import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.lamtev.Cluster;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 
 import static java.util.stream.Collectors.toList;
 import static ru.mail.polis.lamtev.FileKVDAO.DELETED;
@@ -75,7 +74,7 @@ public final class EntityHandler implements HttpHandler {
         final AtomicInteger nOk = new AtomicInteger(0);
         final AtomicInteger nNotFound = new AtomicInteger(0);
         final AtomicInteger nDeleted = new AtomicInteger(0);
-        final AtomicReference<List<byte[]>> values = new AtomicReference<>(new ArrayList<>());
+        final List<byte[]> values = new CopyOnWriteArrayList<>();
 
         futures.forEach(future -> future.thenAccept(response -> {
             try {
@@ -84,7 +83,7 @@ public final class EntityHandler implements HttpHandler {
                 switch (statusCode) {
                     case 200:
                         nOk.incrementAndGet();
-                        values.get().add(value);
+                        values.add(value);
                         break;
                     case 404:
                         if (DELETED.equals(new String(value))) {
@@ -104,7 +103,7 @@ public final class EntityHandler implements HttpHandler {
             } else if (nDeleted.get() > 0 || nNotFound.get() >= ack) {
                 sendResponse(http, NOT_FOUND, 404);
             } else {
-                sendResponse(http, consistentValue(values.get(), ack), 200);
+                sendResponse(http, consistentValue(values, ack), 200);
             }
         });
     }
