@@ -44,7 +44,6 @@ public final class InteractionBetweenNodesHandler implements HttpHandler {
             default:
                 sendResponse(http, method + NOT_ALLOWED, 405);
         }
-        http.close();
     }
 
     private void handleGetRequest(@NotNull String id) throws IOException {

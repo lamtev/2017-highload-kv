@@ -33,6 +33,8 @@ public final class ClusteredKVService implements KVService {
                 sendResponse(http, STATUS_RESPONSE, 200);
             } catch (Exception e) {
                 e.printStackTrace();
+            } finally {
+                http.close();
             }
         }));
 
@@ -41,6 +43,8 @@ public final class ClusteredKVService implements KVService {
                 new EntityHandler(Cluster.of(topology)).handle(http);
             } catch (Exception e) {
                 e.printStackTrace();
+            } finally {
+                http.close();
             }
         }));
 
@@ -49,6 +53,8 @@ public final class ClusteredKVService implements KVService {
                         new InteractionBetweenNodesHandler(dao).handle(http);
                     } catch (Exception e) {
                         e.printStackTrace();
+                    } finally {
+                        http.close();
                     }
                 })
         );

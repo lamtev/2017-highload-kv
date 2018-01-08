@@ -38,7 +38,7 @@ public final class EntityHandler implements HttpHandler {
     }
 
     @Override
-    public void handle(@NotNull HttpExchange http) throws IOException {
+    public void handle(@NotNull HttpExchange http) {
         this.http = http;
         final String query = http.getRequestURI().getQuery();
         if (queryIsInvalid(query)) {
@@ -65,8 +65,8 @@ public final class EntityHandler implements HttpHandler {
                 break;
             default:
                 sendResponse(http, method + NOT_ALLOWED, 405);
+                break;
         }
-        http.close();
     }
 
     private void handleGetRequest(@NotNull String id, int ack, @NotNull List<String> nodes) {
@@ -120,7 +120,7 @@ public final class EntityHandler implements HttpHandler {
 
     }
 
-    private void handlePutRequest(@NotNull String id, int ack, @NotNull List<String> nodes) throws IOException {
+    private void handlePutRequest(@NotNull String id, int ack, @NotNull List<String> nodes) {
         final byte[] data = readData(http.getRequestBody());
         final List<CompletableFuture<HttpResponse>> futures = sendPutRequests(nodes, id, data);
 
@@ -149,7 +149,8 @@ public final class EntityHandler implements HttpHandler {
     }
 
     @NotNull
-    private List<CompletableFuture<HttpResponse>> sendPutRequests(@NotNull List<String> nodes, @NotNull String id, byte[] data) {
+    private List<CompletableFuture<HttpResponse>> sendPutRequests(@NotNull List<String> nodes,
+                                                                  @NotNull String id, byte[] data) {
         return nodes.stream()
                 .map(it ->
                         CompletableFuture.supplyAsync(() -> sendPutRequest(it, id, data), poolOfRequestsToNodes)

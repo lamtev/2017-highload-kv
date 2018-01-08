@@ -56,7 +56,6 @@ public final class HandlerUtils {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
-        http.close();
     }
 
     public static void sendResponse(@NotNull HttpExchange http, @NotNull String message, int code) {
@@ -64,7 +63,7 @@ public final class HandlerUtils {
     }
 
     @NotNull
-    static byte[] readData(@NotNull InputStream is) throws IOException {
+    static byte[] readData(@NotNull InputStream is) {
         try (ByteArrayOutputStream os = new ByteArrayOutputStream()) {
             final byte[] buffer = new byte[1024];
             for (int len; (len = is.read(buffer, 0, 1024)) != -1; ) {
@@ -72,6 +71,8 @@ public final class HandlerUtils {
             }
             os.flush();
             return os.toByteArray();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
     }
 
@@ -135,13 +136,14 @@ public final class HandlerUtils {
         };
     }
 
-    /** Returns a completedFuture of list {@code List<CompletableFuture<T>>}
+    /**
+     * Returns a completedFuture of list {@code List<CompletableFuture<T>>}
      * of those futures {@see cfs} that has been completed within allotted
      * timeout {@code timeoutMillis}
      *
-     * @param cfs list of futures
+     * @param cfs           list of futures
      * @param timeoutMillis timeout in millis
-     * @param <T> T
+     * @param <T>           T
      * @return completedFuture of list which consists of those futures {@code cfs}
      * that has been completed within allotted timeout {@code timeoutMillis}
      */
