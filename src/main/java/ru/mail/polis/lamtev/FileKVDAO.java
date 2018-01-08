@@ -6,9 +6,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.NoSuchElementException;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.concurrent.locks.StampedLock;
 
 public final class FileKVDAO implements KVDAO {
 
@@ -20,11 +18,7 @@ public final class FileKVDAO implements KVDAO {
     @NotNull
     private final String deletedIdsDir;
     @NotNull
-    private final ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
-    @NotNull
-    private final Lock readLock = readWriteLock.readLock();
-    @NotNull
-    private final Lock writeLock = readWriteLock.writeLock();
+    private final StampedLock stampedLock = new StampedLock();
 
     public FileKVDAO(@NotNull String dir) {
         this.dir = dir;
@@ -35,49 +29,50 @@ public final class FileKVDAO implements KVDAO {
     @NotNull
     @Override
     public byte[] get(@NotNull String id) throws NoSuchElementException, IOException {
-        readLock.lock();
-        try {
-            if (fileIsDeleted(id)) {
-                throw new NoSuchElementException(DELETED);
-            } else if (Files.notExists(Paths.get(dir, id))) {
-                throw new NoSuchElementException(CAN_T_FIND_FILE_WITH_ID + id);
+        long stamp = stampedLock.tryOptimisticRead();
+        checkFileExistence(id);
+        byte[] data = Files.readAllBytes(Paths.get(dir, id));
+        if (!stampedLock.validate(stamp)) {
+            stamp = stampedLock.readLock();
+            try {
+                checkFileExistence(id);
+                data = Files.readAllBytes(Paths.get(dir, id));
+            } finally {
+                stampedLock.unlockRead(stamp);
             }
-            return Files.readAllBytes(Paths.get(dir, id));
-        } finally {
-            readLock.unlock();
         }
-
+        return data;
     }
 
     @Override
     public void upsert(@NotNull String id, @NotNull byte[] value) throws IOException {
-        writeLock.lock();
+        final long stamp = stampedLock.writeLock();
         try {
             Files.write(Paths.get(dir, id), value);
         } finally {
-            writeLock.unlock();
+            stampedLock.unlockWrite(stamp);
         }
     }
 
     @Override
     public void delete(@NotNull String id) throws IOException {
-        writeLock.lock();
+        final long stamp = stampedLock.writeLock();
         try {
             if (Files.deleteIfExists(Paths.get(dir, id))) {
                 Files.createFile(Paths.get(deletedIdsDir, id));
             }
         } finally {
-            writeLock.unlock();
+            stampedLock.unlockWrite(stamp);
         }
     }
 
     @Override
     public void deleteDeletedId(@NotNull String id) throws IOException {
-        writeLock.lock();
+        final long stamp = stampedLock.writeLock();
         try {
             Files.deleteIfExists(Paths.get(deletedIdsDir, id));
         } finally {
-            writeLock.unlock();
+            stampedLock.unlockWrite(stamp);
         }
     }
 
@@ -91,6 +86,14 @@ public final class FileKVDAO implements KVDAO {
 
     private boolean fileIsDeleted(@NotNull String id) {
         return Files.exists(Paths.get(deletedIdsDir, id));
+    }
+
+    private void checkFileExistence(@NotNull String id) {
+        if (fileIsDeleted(id)) {
+            throw new NoSuchElementException(DELETED);
+        } else if (Files.notExists(Paths.get(dir, id))) {
+            throw new NoSuchElementException(CAN_T_FIND_FILE_WITH_ID + id);
+        }
     }
 
 }

@@ -31,21 +31,23 @@ public final class ClusteredKVService implements KVService {
         server.createContext(STATUS_PATH, http -> executor.execute(() -> {
             try {
                 sendResponse(http, STATUS_RESPONSE, 200);
-            } catch (IOException e) {
+            } catch (Exception e) {
                 e.printStackTrace();
             }
         }));
+
         server.createContext(ENTITY_PATH, http -> executor.execute(() -> {
             try {
                 new EntityHandler(Cluster.of(topology)).handle(http);
-            } catch (IOException e) {
+            } catch (Exception e) {
                 e.printStackTrace();
             }
         }));
+
         server.createContext(INTERACTION_BETWEEN_NODES_PATH, http -> executor.execute(() -> {
                     try {
                         new InteractionBetweenNodesHandler(dao).handle(http);
-                    } catch (IOException e) {
+                    } catch (Exception e) {
                         e.printStackTrace();
                     }
                 })
