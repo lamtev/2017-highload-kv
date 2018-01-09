@@ -133,23 +133,24 @@ public final class HandlerUtils {
     }
 
     /**
-     * Returns a completedFuture of list {@code List<CompletableFuture<T>>}
-     * of those futures {@see cfs} that has been completed within allotted
-     * timeout {@code timeoutMillis}
+     * Returns a completedFuture of list {@code List<T>} of results
+     * of those futures {@see cfs} that has been completed within
+     * allotted timeout {@code timeoutMillis}
      *
      * @param cfs           list of futures
      * @param timeoutMillis timeout in millis
      * @param <T>           T
-     * @return completedFuture of list which consists of those futures {@code cfs}
-     * that has been completed within allotted timeout {@code timeoutMillis}
+     * @return a completedFuture of list which consists of results
+     * of those futures {@code cfs} that has been completed
+     * within allotted timeout {@code timeoutMillis}
      */
     @NotNull
-    static <T> CompletableFuture<List<CompletableFuture<T>>> futureAllOfWithinATimeout(
+    static <T> CompletableFuture<List<T>> futureAllOfWithinATimeout(
             @NotNull List<CompletableFuture<T>> cfs, long timeoutMillis) {
-        final List<CompletableFuture<T>> list = new CopyOnWriteArrayList<>();
+        final List<T> list = new CopyOnWriteArrayList<>();
         cfs.parallelStream().forEach(future -> {
             try {
-                list.add(completedFuture(future.get(timeoutMillis, TimeUnit.MILLISECONDS)));
+                list.add(future.get(timeoutMillis, TimeUnit.MILLISECONDS));
             } catch (InterruptedException | ExecutionException | TimeoutException ignored) {
             }
         });
